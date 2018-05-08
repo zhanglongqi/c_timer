@@ -23,18 +23,6 @@ void errno_abort(char *message)
 	perror(message);
 	exit(EXIT_FAILURE);
 }
-typedef struct _WaitingMsg
-{
-	int mid;
-	int timeout_count;
-	int *streams;
-} WaitingMsg;
-#define EVENT_TIMEOUT 1
-#define EVENT_ACK 2
-int event;
-
-#define MAX_WAITING_MSG_NUM 10
-WaitingMsg wm[MAX_WAITING_MSG_NUM];
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
