@@ -1,28 +1,3 @@
-/*
- * ORIGINAL HEADER 
- *
- * sigev_thread.c
- *
- * Demonstrate use of the SIGEV_THREAD signal mode to handle
- * signals by creating a new thread.
- *
- * Special notes: This program will not compile on Solaris 2.5.
- * It will compile on Digital UNIX 4.0 but will not work.
- * Digital UNIX 4.0c fixes SIGEV_THREAD, and sources inform me
- * that Solaris 2.6 will also fix SIGEV_THREAD. To try this on
- * Solaris 2.5, remove the "#ifdef sun" conditionals in main.
- *
- * Original: 
- * http://ptgmedia.pearsoncmg.com/images/0201633922/sourcecode/sigev_thread.c 
- */
-
-/**
- * CIRO's Header
- * This is a slightly modified version of the original one so that 
- * i can create multiple timers and trigger then in a more 
- * handy way for my project.
- */
-
 #include <pthread.h>
 #include <sys/signal.h>
 #include <sys/time.h>
@@ -30,8 +5,12 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <semaphore.h>
+#include <math.h>
+#include <time.h>
 
+#define TIMER_COUNTER 7
 #define MILLION 1000000
+struct timeval start_time;
 
 void err_abort(int status, char *message)
 {
@@ -44,10 +23,22 @@ void errno_abort(char *message)
 	perror(message);
 	exit(EXIT_FAILURE);
 }
+typedef struct _WaitingMsg
+{
+	int mid;
+	int timeout_count;
+	int *streams;
+} WaitingMsg;
+#define EVENT_TIMEOUT 1
+#define EVENT_ACK 2
+int event;
 
-pthread_mutex_t mutex   = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t  cond    = PTHREAD_COND_INITIALIZER;
-int             counter = 0;
+#define MAX_WAITING_MSG_NUM 10
+WaitingMsg wm[MAX_WAITING_MSG_NUM];
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int counter = 0;
 
 /*
  * Thread start routine to notify the application when the
@@ -65,39 +56,44 @@ void timer_thread(union sigval arg)
 	if (status != 0)
 		err_abort(status, "Lock mutex");
 
-	if (++counter >= 5) {
+	counter +=1;
+	if (counter >= TIMER_COUNTER)
+	{
 		status = pthread_cond_signal(&cond);
 		if (status != 0)
 			err_abort(status, "Signal condition");
 	}
-
+	
 	status = pthread_mutex_unlock(&mutex);
 	if (status != 0)
 		err_abort(status, "Unlock mutex");
-
-	printf("Timer %d\n", counter);
+	
+	struct timeval stop_time;
+	gettimeofday(&stop_time, NULL);
+	printf("\t Timer thread: Timer %d\t stop time: %ld.%-6ld time span: %ld.%ld\n", counter, stop_time.tv_sec,stop_time.tv_usec, (stop_time.tv_sec - start_time.tv_sec),(stop_time.tv_usec-start_time.tv_usec));
 }
 
-void create_timer(unsigned i)
+void create_timer(float i)
 {
-	timer_t           timer_id;
-	int               status;
+	timer_t timer_id;
+	int status;
 	struct itimerspec ts;
-	struct sigevent   se;
-	long long         nanosecs = MILLION * 100 * i * i;
+	struct sigevent se;
+	long long unsigned nanosecs = MILLION * 1000 * i;
 
 	/*
    * Set the sigevent structure to cause the signal to be
    * delivered by creating a new thread.
    */
-	se.sigev_notify            = SIGEV_THREAD;
-	se.sigev_value.sival_ptr   = &timer_id;
-	se.sigev_notify_function   = timer_thread;
+	se.sigev_notify = SIGEV_THREAD;
+	se.sigev_value.sival_ptr = &timer_id;
+	se.sigev_notify_function = timer_thread;
 	se.sigev_notify_attributes = NULL;
 
-	ts.it_value.tv_sec     = nanosecs / 1000000000;
-	ts.it_value.tv_nsec    = nanosecs % 1000000000;
-	ts.it_interval.tv_sec  = 0;
+	ts.it_value.tv_sec = floor(i);
+	ts.it_value.tv_nsec = (i-floor(i)) * 1000000000;
+	printf("i:%f tv_sec: %ld tv_nsec: %ld\n",i,ts.it_value.tv_sec, ts.it_value.tv_nsec);
+	ts.it_interval.tv_sec = 0;
 	ts.it_interval.tv_nsec = 0;
 
 	status = timer_create(CLOCK_REALTIME, &se, &timer_id);
@@ -112,22 +108,25 @@ void create_timer(unsigned i)
 
 int main()
 {
-	int      status;
+	int status;
 	unsigned i = 1;
+	gettimeofday(&start_time, NULL);
+	printf("start time: %ld,%ld\n", start_time.tv_sec, start_time.tv_usec);
 
-	for (; i < 6; i++)
-		create_timer(i);
+	for (; i <= TIMER_COUNTER ; i++)
+		create_timer(i*0.1);
 
 	status = pthread_mutex_lock(&mutex);
 	if (status != 0)
 		err_abort(status, "Lock mutex");
 
-	while (counter < 5) {
-		printf("\tBlocked!\n");
+	while (counter < 5)
+	{
+		printf("Main thread \tBlocked!\n");
 		status = pthread_cond_wait(&cond, &mutex);
 		if (status != 0)
 			err_abort(status, "Wait on condition");
-		printf("\tUnblocked!\n");
+		printf("Main thread \tUnblocked!\n");
 	}
 	status = pthread_mutex_unlock(&mutex);
 	if (status != 0)
