@@ -67,7 +67,6 @@ void create_timer(float i)
 	int status;
 	struct itimerspec ts;
 	struct sigevent se;
-	long long unsigned nanosecs = MILLION * 1000 * i;
 
 	/*
    * Set the sigevent structure to cause the signal to be
